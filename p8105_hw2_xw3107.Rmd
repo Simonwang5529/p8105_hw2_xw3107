@@ -9,6 +9,7 @@ library(tidyverse)
 library(readxl)
 library(janitor)
 library(dplyr)
+library(lubridate)
 ```
 
 # Problem 1
@@ -149,3 +150,94 @@ head(trash_data)
 prof_total_weight
 gwynnda_cigs_june2022
 ```
+
+### description
+The combined Trash Wheel dataset contains `r nrow(trash_data)` observations from three wheels: Mr. Trash Wheel, Professor Trash Wheel, and Gwynnda. Each row represents the contents of a single dumpster collected by one of the wheels, with key variables including the dumpster ID (`dumpster`), date of collection (`month`, `year`, and `date`), the weight of trash collected in tons (`weight_tons`), the number of plastic bottles (`plastic_bottles`), and the number of cigarette butts (`cigarette_butts`). For example, Professor Trash Wheel has collected a total of `r prof_total_weight$total_weight` tons of trash, while Gwynnda collected `r gwynnda_cigs_june2022$total_cigs` cigarette butts in June 2022. These data allow us to compare not only the total amount of waste collected across wheels but also the types of trash they intercept over time.
+
+
+# Problem 3
+```{r import and clean}
+# The ZORI file from Zillow often has ID columns plus many monthly columns with dates as column names.
+zori_raw = read_csv("./data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv", guess_max = 20000)
+cat("ZORI raw column names (first 30):\n")
+print(names(zori_raw)[1:min(30, length(names(zori_raw)))])
+```
+
+```{r tidy}
+zori = zori_raw |> 
+  janitor::clean_names()
+
+# Identify date columns after clean_names() (they all start with "x20")
+date_cols = names(zori)[str_detect(names(zori), "^x20")]
+
+# Pivot longer
+zori_long = zori |>
+  pivot_longer(
+    cols = all_of(date_cols),
+    names_to = "date_raw",
+    values_to = "zori"
+  ) |>
+  mutate(
+    # Remove the "x" prefix and underscores from date
+    date = str_remove(date_raw, "^x"),
+    date = ymd(str_replace_all(date, "_", "-")),
+    year = year(date),
+    month = month(date, label = TRUE, abbr = FALSE)
+  ) |>
+  filter(!is.na(date), !is.na(zori)) |>
+  select(region_id, size_rank, region_name, region_type, state_name, state,
+         city, metro, county_name, date, year, month, zori)
+```
+```{r cleanzipcode}
+zip_lookup = read_csv("./data/Zip Codes.csv") |> 
+  janitor::clean_names() |>
+  #rename(zip_code = zipcode) |> 
+  mutate(
+    zip = str_pad(as.character(zip_code), 5, pad = "0")  # standardized zip
+  ) |>
+  distinct(zip, .keep_all = TRUE)
+```
+
+```{r Merge}
+
+zori_long = zori_long |>
+  mutate(
+    zip = str_pad(as.character(region_name), 5, pad = "0")  # create proper zip
+  )
+
+#merge
+zori_final = zori_long |>
+  left_join(zip_lookup, by = "zip") |>
+  arrange(zip, date)
+
+# check
+cat("Final dataset rows:", nrow(zori_final), "\n")
+cat("Unique ZIPs:", length(unique(zori_final$zip)), "\n")
+cat("Unique neighborhoods:", length(unique(na.omit(zori_final$neighborhood))), "\n")
+
+glimpse(zori_final)
+```
+### summary_and_analysis
+```{r summary_and_analysis}
+# --- Summary of final dataset ---
+cat("Total observations:", nrow(zori_final), "\n")
+cat("Unique ZIP codes:", length(unique(zori_final$zip)), "\n")
+cat("Unique neighborhoods:", length(unique(na.omit(zori_final$neighborhood))), "\n")
+
+# --- Identify ZIPs in lookup but not in Zillow ZORI data ---
+missing_zips = setdiff(zip_lookup$zip, zori_final$zip)
+cat("Number of ZIP codes in lookup but missing from Zillow data:", length(missing_zips), "\n")
+head(missing_zips, 10)  # show a few examples
+
+# --- Compare rental prices Jan 2020 vs Jan 2021 ---
+covid_change = zori_final |>
+  filter(month == "January", year %in% c(2020, 2021)) |>
+  select(zip, borough = county, neighborhood, year, zori) |>
+  pivot_wider(names_from = year, values_from = zori, names_prefix = "year_") |>
+  mutate(change = year_2021 - year_2020) |>
+  arrange(change)  # sort by largest drop
+
+top10_drops = covid_change |> 
+  slice(1:10)
+
+top10_drops

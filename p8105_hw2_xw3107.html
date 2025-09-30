@@ -644,6 +644,165 @@ head(trash_data)</code></pre>
 ##   total_cigs
 ##        &lt;dbl&gt;
 ## 1      18120</code></pre>
+<div id="description" class="section level3">
+<h3>description</h3>
+<p>The combined Trash Wheel dataset contains 1033 observations from
+three wheels: Mr. Trash Wheel, Professor Trash Wheel, and Gwynnda. Each
+row represents the contents of a single dumpster collected by one of the
+wheels, with key variables including the dumpster ID
+(<code>dumpster</code>), date of collection (<code>month</code>,
+<code>year</code>, and <code>date</code>), the weight of trash collected
+in tons (<code>weight_tons</code>), the number of plastic bottles
+(<code>plastic_bottles</code>), and the number of cigarette butts
+(<code>cigarette_butts</code>). For example, Professor Trash Wheel has
+collected a total of 246.74 tons of trash, while Gwynnda collected
+1.812^{4} cigarette butts in June 2022. These data allow us to compare
+not only the total amount of waste collected across wheels but also the
+types of trash they intercept over time.</p>
+</div>
+</div>
+<div id="problem-3" class="section level1">
+<h1>Problem 3</h1>
+<pre class="r"><code># The ZORI file from Zillow often has ID columns plus many monthly columns with dates as column names.
+zori_raw = read_csv(&quot;./data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv&quot;, guess_max = 20000)</code></pre>
+<pre><code>## Rows: 149 Columns: 125
+## ── Column specification ────────────────────────────────────────────────────────
+## Delimiter: &quot;,&quot;
+## chr   (6): RegionType, StateName, State, City, Metro, CountyName
+## dbl (119): RegionID, SizeRank, RegionName, 2015-01-31, 2015-02-28, 2015-03-3...
+## 
+## ℹ Use `spec()` to retrieve the full column specification for this data.
+## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+<pre class="r"><code>cat(&quot;ZORI raw column names (first 30):\n&quot;)</code></pre>
+<pre><code>## ZORI raw column names (first 30):</code></pre>
+<pre class="r"><code>print(names(zori_raw)[1:min(30, length(names(zori_raw)))])</code></pre>
+<pre><code>##  [1] &quot;RegionID&quot;   &quot;SizeRank&quot;   &quot;RegionName&quot; &quot;RegionType&quot; &quot;StateName&quot; 
+##  [6] &quot;State&quot;      &quot;City&quot;       &quot;Metro&quot;      &quot;CountyName&quot; &quot;2015-01-31&quot;
+## [11] &quot;2015-02-28&quot; &quot;2015-03-31&quot; &quot;2015-04-30&quot; &quot;2015-05-31&quot; &quot;2015-06-30&quot;
+## [16] &quot;2015-07-31&quot; &quot;2015-08-31&quot; &quot;2015-09-30&quot; &quot;2015-10-31&quot; &quot;2015-11-30&quot;
+## [21] &quot;2015-12-31&quot; &quot;2016-01-31&quot; &quot;2016-02-29&quot; &quot;2016-03-31&quot; &quot;2016-04-30&quot;
+## [26] &quot;2016-05-31&quot; &quot;2016-06-30&quot; &quot;2016-07-31&quot; &quot;2016-08-31&quot; &quot;2016-09-30&quot;</code></pre>
+<pre class="r"><code>zori = zori_raw |&gt; 
+  janitor::clean_names()
+
+# Identify date columns after clean_names() (they all start with &quot;x20&quot;)
+date_cols = names(zori)[str_detect(names(zori), &quot;^x20&quot;)]
+
+# Pivot longer
+zori_long = zori |&gt;
+  pivot_longer(
+    cols = all_of(date_cols),
+    names_to = &quot;date_raw&quot;,
+    values_to = &quot;zori&quot;
+  ) |&gt;
+  mutate(
+    # Remove the &quot;x&quot; prefix and underscores from date
+    date = str_remove(date_raw, &quot;^x&quot;),
+    date = ymd(str_replace_all(date, &quot;_&quot;, &quot;-&quot;)),
+    year = year(date),
+    month = month(date, label = TRUE, abbr = FALSE)
+  ) |&gt;
+  filter(!is.na(date), !is.na(zori)) |&gt;
+  select(region_id, size_rank, region_name, region_type, state_name, state,
+         city, metro, county_name, date, year, month, zori)</code></pre>
+<pre class="r"><code>zip_lookup = read_csv(&quot;./data/Zip Codes.csv&quot;) |&gt; 
+  janitor::clean_names() |&gt;
+  #rename(zip_code = zipcode) |&gt; 
+  mutate(
+    zip = str_pad(as.character(zip_code), 5, pad = &quot;0&quot;)  # standardized zip
+  ) |&gt;
+  distinct(zip, .keep_all = TRUE)</code></pre>
+<pre><code>## Rows: 322 Columns: 7
+## ── Column specification ────────────────────────────────────────────────────────
+## Delimiter: &quot;,&quot;
+## chr (4): County, County Code, File Date, Neighborhood
+## dbl (3): State FIPS, County FIPS, ZipCode
+## 
+## ℹ Use `spec()` to retrieve the full column specification for this data.
+## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+<pre class="r"><code>zori_long = zori_long |&gt;
+  mutate(
+    zip = str_pad(as.character(region_name), 5, pad = &quot;0&quot;)  # create proper zip
+  )
+
+#merge
+zori_final = zori_long |&gt;
+  left_join(zip_lookup, by = &quot;zip&quot;) |&gt;
+  arrange(zip, date)
+
+# check
+cat(&quot;Final dataset rows:&quot;, nrow(zori_final), &quot;\n&quot;)</code></pre>
+<pre><code>## Final dataset rows: 10450</code></pre>
+<pre class="r"><code>cat(&quot;Unique ZIPs:&quot;, length(unique(zori_final$zip)), &quot;\n&quot;)</code></pre>
+<pre><code>## Unique ZIPs: 149</code></pre>
+<pre class="r"><code>cat(&quot;Unique neighborhoods:&quot;, length(unique(na.omit(zori_final$neighborhood))), &quot;\n&quot;)</code></pre>
+<pre><code>## Unique neighborhoods: 42</code></pre>
+<pre class="r"><code>glimpse(zori_final)</code></pre>
+<pre><code>## Rows: 10,450
+## Columns: 21
+## $ region_id    &lt;dbl&gt; 61615, 61615, 61615, 61615, 61615, 61615, 61615, 61615, 6…
+## $ size_rank    &lt;dbl&gt; 4444, 4444, 4444, 4444, 4444, 4444, 4444, 4444, 4444, 444…
+## $ region_name  &lt;dbl&gt; 10001, 10001, 10001, 10001, 10001, 10001, 10001, 10001, 1…
+## $ region_type  &lt;chr&gt; &quot;zip&quot;, &quot;zip&quot;, &quot;zip&quot;, &quot;zip&quot;, &quot;zip&quot;, &quot;zip&quot;, &quot;zip&quot;, &quot;zip&quot;, &quot;…
+## $ state_name   &lt;chr&gt; &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY…
+## $ state        &lt;chr&gt; &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY&quot;, &quot;NY…
+## $ city         &lt;chr&gt; &quot;New York&quot;, &quot;New York&quot;, &quot;New York&quot;, &quot;New York&quot;, &quot;New York…
+## $ metro        &lt;chr&gt; &quot;New York-Newark-Jersey City, NY-NJ-PA&quot;, &quot;New York-Newark…
+## $ county_name  &lt;chr&gt; &quot;New York County&quot;, &quot;New York County&quot;, &quot;New York County&quot;, …
+## $ date         &lt;date&gt; 2015-01-31, 2015-02-28, 2015-03-31, 2015-04-30, 2015-05-…
+## $ year         &lt;dbl&gt; 2015, 2015, 2015, 2015, 2015, 2015, 2015, 2015, 2015, 201…
+## $ month        &lt;ord&gt; January, February, March, April, May, June, July, August,…
+## $ zori         &lt;dbl&gt; 3855.089, 3892.376, 3898.212, 3969.644, 4033.221, 4070.80…
+## $ zip          &lt;chr&gt; &quot;10001&quot;, &quot;10001&quot;, &quot;10001&quot;, &quot;10001&quot;, &quot;10001&quot;, &quot;10001&quot;, &quot;10…
+## $ county       &lt;chr&gt; &quot;New York&quot;, &quot;New York&quot;, &quot;New York&quot;, &quot;New York&quot;, &quot;New York…
+## $ state_fips   &lt;dbl&gt; 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 3…
+## $ county_code  &lt;chr&gt; &quot;061&quot;, &quot;061&quot;, &quot;061&quot;, &quot;061&quot;, &quot;061&quot;, &quot;061&quot;, &quot;061&quot;, &quot;061&quot;, &quot;…
+## $ county_fips  &lt;dbl&gt; 36061, 36061, 36061, 36061, 36061, 36061, 36061, 36061, 3…
+## $ zip_code     &lt;dbl&gt; 10001, 10001, 10001, 10001, 10001, 10001, 10001, 10001, 1…
+## $ file_date    &lt;chr&gt; &quot;7/25/07&quot;, &quot;7/25/07&quot;, &quot;7/25/07&quot;, &quot;7/25/07&quot;, &quot;7/25/07&quot;, &quot;7…
+## $ neighborhood &lt;chr&gt; &quot;Chelsea and Clinton&quot;, &quot;Chelsea and Clinton&quot;, &quot;Chelsea an…</code></pre>
+<div id="summary_and_analysis" class="section level3">
+<h3>summary_and_analysis</h3>
+<pre class="r"><code># --- Summary of final dataset ---
+cat(&quot;Total observations:&quot;, nrow(zori_final), &quot;\n&quot;)</code></pre>
+<pre><code>## Total observations: 10450</code></pre>
+<pre class="r"><code>cat(&quot;Unique ZIP codes:&quot;, length(unique(zori_final$zip)), &quot;\n&quot;)</code></pre>
+<pre><code>## Unique ZIP codes: 149</code></pre>
+<pre class="r"><code>cat(&quot;Unique neighborhoods:&quot;, length(unique(na.omit(zori_final$neighborhood))), &quot;\n&quot;)</code></pre>
+<pre><code>## Unique neighborhoods: 42</code></pre>
+<pre class="r"><code># --- Identify ZIPs in lookup but not in Zillow ZORI data ---
+missing_zips = setdiff(zip_lookup$zip, zori_final$zip)
+cat(&quot;Number of ZIP codes in lookup but missing from Zillow data:&quot;, length(missing_zips), &quot;\n&quot;)</code></pre>
+<pre><code>## Number of ZIP codes in lookup but missing from Zillow data: 171</code></pre>
+<pre class="r"><code>head(missing_zips, 10)  # show a few examples</code></pre>
+<pre><code>##  [1] &quot;10464&quot; &quot;10474&quot; &quot;10475&quot; &quot;10499&quot; &quot;10550&quot; &quot;10704&quot; &quot;10705&quot; &quot;10803&quot; &quot;11202&quot;
+## [10] &quot;11224&quot;</code></pre>
+<pre class="r"><code># --- Compare rental prices Jan 2020 vs Jan 2021 ---
+covid_change = zori_final |&gt;
+  filter(month == &quot;January&quot;, year %in% c(2020, 2021)) |&gt;
+  select(zip, borough = county, neighborhood, year, zori) |&gt;
+  pivot_wider(names_from = year, values_from = zori, names_prefix = &quot;year_&quot;) |&gt;
+  mutate(change = year_2021 - year_2020) |&gt;
+  arrange(change)  # sort by largest drop
+
+top10_drops = covid_change |&gt; 
+  slice(1:10)
+
+top10_drops</code></pre>
+<pre><code>## # A tibble: 10 × 6
+##    zip   borough  neighborhood                  year_2020 year_2021 change
+##    &lt;chr&gt; &lt;chr&gt;    &lt;chr&gt;                             &lt;dbl&gt;     &lt;dbl&gt;  &lt;dbl&gt;
+##  1 10007 New York Lower Manhattan                   6334.     5422.  -913.
+##  2 10069 New York &lt;NA&gt;                              4623.     3875.  -748.
+##  3 10009 New York Lower East Side                   3406.     2692.  -714.
+##  4 10016 New York Gramercy Park and Murray Hill     3731.     3019.  -712.
+##  5 10001 New York Chelsea and Clinton               4108.     3398.  -710.
+##  6 10002 New York Lower East Side                   3645.     2935.  -710.
+##  7 10004 New York Lower Manhattan                   3150.     2444.  -706.
+##  8 10038 New York Lower Manhattan                   3573.     2876.  -698.
+##  9 10012 New York Greenwich Village and Soho        3629.     2942.  -686.
+## 10 10010 New York Gramercy Park and Murray Hill     3697.     3012.  -685.</code></pre>
+</div>
 </div>
 
 
