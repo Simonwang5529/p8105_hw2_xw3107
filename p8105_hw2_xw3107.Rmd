@@ -1,6 +1,9 @@
 ---
 title: "hw2"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
 date: "2025-09-28"
 ---
 
@@ -29,8 +32,6 @@ pols = pols |>
     )
   ) |>
   select(-day, -prez_gop, -prez_dem)
-head(pols)
-print(summary(pols))
 glimpse(pols)
 
 ```
@@ -39,7 +40,6 @@ glimpse(pols)
 
 ```{r clean_snp}
 snp = read_csv("./data/snp.csv")
-
 snp = snp |>
   separate(date, into = c("month", "day", "year"), sep = "/") |>
   mutate(
@@ -49,8 +49,6 @@ snp = snp |>
   ) |>
   select(year, month, close) |>
   arrange(year, match(month, month.name))
-head(snp)
-print(summary(snp))
 glimpse(snp)
 ```
 
@@ -69,8 +67,6 @@ merged_df = pols |>
   left_join(snp, by = c("year", "month")) |>
   left_join(unemp, by = c("year", "month"))
 
-head(merged_df)
-print(summary(merged_df))
 glimpse(merged_df)
 ```
 
@@ -88,12 +84,12 @@ Finally, the merged dataset joins these three sources into a single table of 822
 ```{r import n clean}
 # Clean Mr. Trash Wheel
 mr_trash = read_excel(
-  "./data/202409 Trash Wheel Collection Data.xlsx",
+  "./data/202509 Trash Wheel Collection Data.xlsx",
   sheet = "Mr. Trash Wheel",
   skip = 1
 ) |>
-  janitor::clean_names() |>
-  filter(!is.na(dumpster)) |>
+  janitor::clean_names() |> #remove caps
+  filter(!is.na(dumpster)) |> # remove the na row
   mutate(
     year = as.character(year),
     month = as.character(month),
@@ -104,10 +100,10 @@ mr_trash = read_excel(
 
 # Clean Professor Trash Wheel
 prof_trash = read_excel(
-  "./data/202409 Trash Wheel Collection Data.xlsx",
+  "./data/202509 Trash Wheel Collection Data.xlsx",
   sheet = "Professor Trash Wheel",
   skip = 1
-) |>
+) |> # do the same as aboves but no sports balls
   janitor::clean_names() |>
   filter(!is.na(dumpster)) |>
   mutate(
@@ -117,24 +113,24 @@ prof_trash = read_excel(
   ) |>
   select(-starts_with("x"))
 
-# Clean Gwynnda
+# Clean Gwynns
 gwynnda_trash = read_excel(
-  "./data/202409 Trash Wheel Collection Data.xlsx",
-  sheet = "Gwynnda Trash Wheel",
+  "./data/202509 Trash Wheel Collection Data.xlsx",
+  sheet = "Gwynns Falls Trash Wheel",
   skip = 1
 ) |>
   janitor::clean_names() |>
-  filter(!is.na(dumpster)) |>
+  filter(!is.na(dumpster)) |> #same as above
   mutate(
     year = as.character(year),
     month = as.character(month),
-    wheel = "Gwynnda"
+    wheel = "Gwynns"
   ) |>
   select(-starts_with("x"))
 
 ```
 
-# Combine all wheels
+## Combine all wheels
 ```{r}
 
 trash_data = bind_rows(mr_trash, prof_trash, gwynnda_trash)
@@ -143,7 +139,7 @@ prof_total_weight = trash_data |>
   summarise(total_weight = sum(weight_tons, na.rm = TRUE))
 
 gwynnda_cigs_june2022 = trash_data |>
-  filter(wheel == "Gwynnda", year == "2022", month == "June") |>
+  filter(wheel == "Gwynns", year == "2022", month == "June") |>
   summarise(total_cigs = sum(cigarette_butts, na.rm = TRUE))
 
 head(trash_data)
@@ -158,11 +154,10 @@ The combined Trash Wheel dataset contains `r nrow(trash_data)` observations from
 # Problem 3
 ```{r import and clean}
 # The ZORI file from Zillow often has ID columns plus many monthly columns with dates as column names.
-zori_raw = read_csv("./data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv", guess_max = 20000)
-cat("ZORI raw column names (first 30):\n")
+zori_raw = read_csv("./data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv", guess_max = 30000)
 print(names(zori_raw)[1:min(30, length(names(zori_raw)))])
 ```
-
+## tidy
 ```{r tidy}
 zori = zori_raw |> 
   janitor::clean_names()
@@ -187,6 +182,7 @@ zori_long = zori |>
   filter(!is.na(date), !is.na(zori)) |>
   select(region_id, size_rank, region_name, region_type, state_name, state,
          city, metro, county_name, date, year, month, zori)
+glimpse(zori_long)
 ```
 ```{r cleanzipcode}
 zip_lookup = read_csv("./data/Zip Codes.csv") |> 
@@ -209,27 +205,22 @@ zori_long = zori_long |>
 zori_final = zori_long |>
   left_join(zip_lookup, by = "zip") |>
   arrange(zip, date)
-
-# check
-cat("Final dataset rows:", nrow(zori_final), "\n")
-cat("Unique ZIPs:", length(unique(zori_final$zip)), "\n")
-cat("Unique neighborhoods:", length(unique(na.omit(zori_final$neighborhood))), "\n")
-
 glimpse(zori_final)
 ```
 ### summary_and_analysis
 ```{r summary_and_analysis}
-# --- Summary of final dataset ---
-cat("Total observations:", nrow(zori_final), "\n")
+
+cat("Total", nrow(zori_final), "\n")
 cat("Unique ZIP codes:", length(unique(zori_final$zip)), "\n")
 cat("Unique neighborhoods:", length(unique(na.omit(zori_final$neighborhood))), "\n")
 
-# --- Identify ZIPs in lookup but not in Zillow ZORI data ---
 missing_zips = setdiff(zip_lookup$zip, zori_final$zip)
-cat("Number of ZIP codes in lookup but missing from Zillow data:", length(missing_zips), "\n")
-head(missing_zips, 10)  # show a few examples
+cat("zipcodes missing from Zillow data:", length(missing_zips), "\n")
+#10 samples
 
-# --- Compare rental prices Jan 2020 vs Jan 2021 ---
+head(missing_zips, 10) 
+
+# comparison between 2020 and 2021
 covid_change = zori_final |>
   filter(month == "January", year %in% c(2020, 2021)) |>
   select(zip, borough = county, neighborhood, year, zori) |>
@@ -241,3 +232,4 @@ top10_drops = covid_change |>
   slice(1:10)
 
 top10_drops
+```
