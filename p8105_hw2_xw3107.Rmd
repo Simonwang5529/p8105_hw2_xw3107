@@ -232,3 +232,6 @@ top10_drops = covid_change |>
 
 top10_drops
 ```
+### Comments
+The final tidy dataset contains `r nrow(zori_final)` observations, spanning `r length(unique(zori_final$zip))` unique ZIP codes and `r length(unique(na.omit(zori_final$neighborhood)))` unique neighborhoods, with each row representing rental prices for a ZIP code in a given month. Several ZIP codes in the lookup dataset are missing from Zillow’s ZORI data. Comparing January 2021 to January 2020, the largest rent drops occurred mainly in Manhattan, with somedeclines in Brooklyn and Queens, showing the outmigration from dense, high-cost neighborhoods to other places.
+
